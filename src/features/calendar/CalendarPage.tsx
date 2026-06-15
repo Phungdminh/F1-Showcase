@@ -10,8 +10,7 @@
 // map draw-in set piece (MOTION §3 /calendar → /calendar/:roundId).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
-import { Check, Minus, Plus, RotateCcw } from 'lucide-react';
+import { Minus, Plus, RotateCcw } from 'lucide-react';
 
 // ── Zoom/pan helpers ──────────────────────────────────────────────────────────
 const BASE_VIEW = { x: 0, y: 28, w: 1000, h: 392 } as const;
@@ -42,14 +41,28 @@ import WorldMap, { project } from './WorldMap';
 import RoundMarker from './RoundMarker';
 import RoundPreviewCard from './RoundPreviewCard';
 
-const VI_DATE_SHORT = new Intl.DateTimeFormat('vi-VN', {
-  day: '2-digit',
-  month: '2-digit',
-});
-
 /** A race is "upcoming" when its date is today (runtime) or later. */
 function isUpcoming(race: Race, now: Date): boolean {
   return new Date(race.date).getTime() >= now.getTime();
+}
+
+/**
+ * Tracks whether the viewport is phone-sized, re-evaluating on resize/rotate so
+ * the map can size pins and controls for touch. Tailwind's `md` breakpoint (768px).
+ */
+function useIsMobile(): boolean {
+  const query = '(max-width: 767px)';
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setIsMobile(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  return isMobile;
 }
 
 export default function CalendarPage() {
@@ -59,6 +72,8 @@ export default function CalendarPage() {
     () => [...calendar].sort((a, b) => a.round - b.round),
     [],
   );
+
+  const isMobile = useIsMobile();
 
   // ── Zoom / pan state ───────────────────────────────────────────────────────
   const [vb, setVb] = useState<Vb>(BASE_VIEW);
@@ -233,10 +248,10 @@ export default function CalendarPage() {
   return (
     <div className="min-h-screen bg-transparent">
       <Navbar variant="light" />
-      <main className="px-5 pb-20 pt-10 md:px-16 md:pb-24 md:pt-16 lg:px-20 xl:px-28">
+      <main className="px-5 pb-16 pt-8 sm:px-6 md:px-16 md:pb-24 md:pt-16 lg:px-20 xl:px-28">
       <header className="max-w-3xl">
-        <Eyebrow className="mb-6">Lịch thi đấu</Eyebrow>
-        <h1 className="text-4xl font-light leading-[1.05] tracking-tight text-neutral-900 md:text-6xl">
+        <Eyebrow className="mb-4 md:mb-6">Lịch thi đấu</Eyebrow>
+        <h1 className="text-3xl font-light leading-[1.08] tracking-tight text-neutral-900 sm:text-4xl md:text-6xl">
           24 chặng đua 2026
         </h1>
       </header>
@@ -244,13 +259,14 @@ export default function CalendarPage() {
       {empty ? (
         <p className="mt-16 text-sm text-neutral-500">Chưa có dữ liệu lịch thi đấu.</p>
       ) : (
-        <div className="mt-12 lg:mt-16">
+        <div className="mt-8 md:mt-12 lg:mt-16">
           {/* Map + anchored preview (desktop). On mobile the preview drops below the map. */}
           <div className="relative">
-            {/* Zoom/pan container */}
+            {/* Zoom/pan container — full-bleed on phones (cancels the page gutter) so
+                the wide world map gets every available pixel; gutter + rounding return at md. */}
             <div
               ref={mapContainerRef}
-              className="relative select-none overflow-hidden rounded"
+              className="relative -mx-5 select-none overflow-hidden rounded-none sm:-mx-6 md:mx-0 md:rounded"
               style={{ cursor: currentScale > 1.01 ? 'grab' : 'default', touchAction: 'none' }}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
@@ -267,6 +283,7 @@ export default function CalendarPage() {
                     onSelect={showRound}
                     onHoverEnd={scheduleHide}
                     scale={currentScale}
+                    baseSize={isMobile ? 44 : 24}
                   />
                 ))}
               </WorldMap>
@@ -293,7 +310,7 @@ export default function CalendarPage() {
               )}
 
               {/* Zoom controls */}
-              <div className="absolute bottom-3 right-3 z-10 flex items-center gap-1">
+              <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 md:bottom-3 md:right-3">
                 {currentScale > 1.05 && (
                   <span className="mr-1 font-mono text-xs tabular-nums text-white/50">
                     {currentScale.toFixed(1)}×
@@ -304,32 +321,38 @@ export default function CalendarPage() {
                   aria-label="Phóng to"
                   onClick={zoomIn}
                   disabled={currentScale >= MAX_ZOOM}
-                  className="flex h-7 w-7 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white md:h-7 md:w-7 disabled:opacity-30"
                 >
-                  <Plus className="h-3.5 w-3.5" />
+                  <Plus className="h-4 w-4 md:h-3.5 md:w-3.5" />
                 </button>
                 <button
                   type="button"
                   aria-label="Thu nhỏ"
                   onClick={zoomOut}
                   disabled={currentScale <= 1.01}
-                  className="flex h-7 w-7 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white md:h-7 md:w-7 disabled:opacity-30"
                 >
-                  <Minus className="h-3.5 w-3.5" />
+                  <Minus className="h-4 w-4 md:h-3.5 md:w-3.5" />
                 </button>
                 {currentScale > 1.05 && (
                   <button
                     type="button"
                     aria-label="Đặt lại zoom"
                     onClick={resetZoom}
-                    className="flex h-7 w-7 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded bg-black/40 text-white/70 backdrop-blur-sm transition hover:bg-black/60 hover:text-white md:h-7 md:w-7"
                   >
-                    <RotateCcw className="h-3.5 w-3.5" />
+                    <RotateCcw className="h-4 w-4 md:h-3.5 md:w-3.5" />
                   </button>
                 )}
               </div>
             </div>
           </div>
+
+          {/* Touch hint — phones only: the dense world map needs a zoom before pins
+              are individually tappable. */}
+          <p className="mt-3 px-1 text-center text-xs leading-relaxed text-neutral-500 md:hidden">
+            Chụm 2 ngón để phóng to · chạm vào marker để xem đường đua
+          </p>
 
           {/* Mobile / tablet: preview panel below the map (robust, no overlap). */}
           {selectedRace && (
@@ -341,49 +364,6 @@ export default function CalendarPage() {
               />
             </div>
           )}
-
-          {/* Typographic round list — keyboard access to every round (DESIGN §4 table feel). */}
-          <section aria-label="Danh sách 24 chặng" className="mt-16 lg:mt-24">
-            <Eyebrow className="mb-6">Toàn bộ lịch</Eyebrow>
-            <ol className="border-t border-neutral-200">
-              {rounds.map((race) => {
-                const upcoming = isUpcoming(race, now);
-                const active = race.round === selectedRound;
-                return (
-                  <li key={race.round} className="border-b border-neutral-200">
-                    <Link
-                      to={`/calendar/${race.round}`}
-                      onMouseEnter={() => showRound(race.round)}
-                      onMouseLeave={scheduleHide}
-                      onFocus={() => showRound(race.round)}
-                      onBlur={scheduleHide}
-                      aria-current={active ? 'true' : undefined}
-                      className={`grid grid-cols-[2.5rem_1fr_auto] items-center gap-4 py-4 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 ${
-                        active ? 'text-neutral-900' : 'text-neutral-600 hover:text-neutral-900'
-                      }`}
-                    >
-                      <span className="font-mono tabular-nums text-neutral-500">
-                        {String(race.round).padStart(2, '0')}
-                      </span>
-                      <span className="flex items-center gap-2 truncate">
-                        <span className="truncate font-light text-base">{race.name}</span>
-                        {!upcoming && (
-                          <Check
-                            aria-label="Đã đua"
-                            className="h-3.5 w-3.5 shrink-0 text-neutral-500"
-                            strokeWidth={2.5}
-                          />
-                        )}
-                      </span>
-                      <span className="tabular-nums text-right text-neutral-500">
-                        {VI_DATE_SHORT.format(new Date(race.date))}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
-          </section>
         </div>
       )}
       </main>

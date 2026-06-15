@@ -39,9 +39,15 @@ export interface RoundMarkerProps {
   onHoverEnd: () => void;
   /** Current map zoom scale — pin divides by this to stay constant screen size. */
   scale?: number;
+  /**
+   * Base pin size in SVG units (before the zoom divide). The page passes a larger
+   * value on touch/phone layouts so pins stay a comfortable tap target on the
+   * small, dense world map. Defaults to the desktop size.
+   */
+  baseSize?: number;
 }
 
-export default function RoundMarker({ race, upcoming, active, onSelect, onHoverEnd, scale = 1 }: RoundMarkerProps) {
+export default function RoundMarker({ race, upcoming, active, onSelect, onHoverEnd, scale = 1, baseSize = 24 }: RoundMarkerProps) {
   const reduced = useReducedMotionSafe();
   const navigate = useNavigate();
   const { x, y } = project(race.lat, race.lng);
@@ -49,8 +55,8 @@ export default function RoundMarker({ race, upcoming, active, onSelect, onHoverE
     upcoming ? ' (sắp diễn ra)' : ' (đã đua)'
   }`;
   // Pin size in SVG units divided by scale so the pin stays the same screen size
-  // regardless of how far the user has zoomed in.
-  const S = 24 / scale;
+  // regardless of how far the user has zoomed in. `baseSize` is bumped up on phones.
+  const S = baseSize / scale;
 
   const pulsing = !reduced && upcoming && !active;
 
