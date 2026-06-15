@@ -9,18 +9,20 @@
 //
 // Tabs carry data-motion="standings-tab"; the Phase-4 motion pass owns the tab
 // crossfade (MOTION §3). We only render focusable role=tab buttons + panels.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DUR, EASE, useReducedMotionSafe } from '../../lib/motion';
+import { useLiveData } from '../../lib/useLiveData';
 import Eyebrow from '../../components/Eyebrow';
 import Navbar from '../../components/Navbar';
 import Skeleton from '../../components/Skeleton';
-import StaleDataBadge from '../../components/StaleDataBadge';
-import ErrorFallback from '../../components/ErrorFallback';
+import LiveBadge from '../../components/LiveBadge';
 import { getConstructorStandings, getDriverStandings } from '../../lib/api/jolpica';
-import { standingsSnapshot } from '../../data/fallbacks/standings';
 import { getTeam } from '../../data/teams';
 import type { ConstructorStanding, DriverStanding } from '../../types';
+
+/** Auto-refresh cadence for the live standings poll (user-chosen 30s). */
+const REFRESH_MS = 30_000;
 
 type TabId = 'constructors' | 'drivers';
 
@@ -29,64 +31,31 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'drivers', label: 'Tay đua' },
 ];
 
-interface LoadState {
-  constructors: ConstructorStanding[] | null;
-  drivers: DriverStanding[] | null;
-  stale: boolean;
-  error: boolean;
-  loading: boolean;
-}
-
-const INITIAL: LoadState = {
-  constructors: null,
-  drivers: null,
-  stale: false,
-  error: false,
-  loading: true,
-};
-
 export default function StandingsPage() {
   const [tab, setTab] = useState<TabId>('constructors');
-  const [state, setState] = useState<LoadState>(INITIAL);
 
-  // `isActive` lets the caller drop results after unmount (avoids a state update warning).
-  const load = useCallback(async (isActive: () => boolean = () => true) => {
-    setState((s) => ({ ...s, loading: true, error: false }));
-    try {
+  // Both tables share one poll so they refresh in lockstep (one request pair).
+  // `revalidate` is threaded through so every poll genuinely hits the network.
+  const fetchStandings = useCallback(
+    async (revalidate: boolean) => {
       const [constructors, drivers] = await Promise.all([
-        getConstructorStandings(),
-        getDriverStandings(),
+        getConstructorStandings(revalidate),
+        getDriverStandings(revalidate),
       ]);
-      if (!isActive()) return;
-      setState({
-        constructors: constructors.data,
-        drivers: drivers.data,
+      return {
+        data: { constructors: constructors.data, drivers: drivers.data },
         stale: constructors.stale || drivers.stale,
-        error: false,
-        loading: false,
-      });
-    } catch {
-      // The fetchers never throw, but guard defensively so the UI always has an error state.
-      if (!isActive()) return;
-      setState({
-        constructors: standingsSnapshot.constructors,
-        drivers: standingsSnapshot.drivers,
-        stale: true,
-        error: true,
-        loading: false,
-      });
-    }
-  }, []);
+      };
+    },
+    [],
+  );
 
-  useEffect(() => {
-    let active = true;
-    void load(() => active);
-    return () => {
-      active = false;
-    };
-  }, [load]);
-
-  const { loading, error, stale } = state;
+  const { data, stale, loading, lastUpdated, live } = useLiveData(
+    fetchStandings,
+    REFRESH_MS,
+  );
+  const constructors = data?.constructors ?? null;
+  const drivers = data?.drivers ?? null;
   const reduced = useReducedMotionSafe();
 
   return (
@@ -98,12 +67,9 @@ export default function StandingsPage() {
         <h1 className="text-4xl font-light leading-[1.05] tracking-tight text-neutral-900 md:text-6xl">
           Mùa giải 2026
         </h1>
-        {stale && !loading && (
+        {!loading && (
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <StaleDataBadge />
-            <span className="text-xs text-neutral-500">
-              Cập nhật: {standingsSnapshot.fetchedAt}
-            </span>
+            <LiveBadge live={live} stale={stale} lastUpdated={lastUpdated} />
           </div>
         )}
       </header>
@@ -140,19 +106,15 @@ export default function StandingsPage() {
 
       {/* Panels */}
       <div className="mt-10">
-        {error && !loading ? (
-          <ErrorFallback
-            title="Không tải được bảng xếp hạng"
-            message="Đang hiển thị dữ liệu lưu tạm. Vui lòng thử lại."
-            onRetry={() => void load()}
-          />
-        ) : (
+        {
           // One AnimatePresence so the outgoing panel exits FIRST (fade + slide down
           // 12px, 0.15s) before the incoming enters (fade + slide up from 12px) —
           // lines never overlap mid-flight (MOTION §3). mode="wait" guarantees the
           // handoff. The keyed motion.section is itself the role=tabpanel, so its
           // id/aria-labelledby always match the selected tab's aria-controls.
-          // Reduced motion → plain 0.15s opacity swap.
+          // Reduced motion → plain 0.15s opacity swap. On a fetch failure the api
+          // layer yields the cached fallback flagged stale (LiveBadge shows it),
+          // so there's no separate error screen.
           <AnimatePresence mode="wait" initial={false}>
             <motion.section
               key={tab}
@@ -172,19 +134,19 @@ export default function StandingsPage() {
               }
             >
               {tab === 'constructors' ? (
-                loading || !state.constructors ? (
+                loading || !constructors ? (
                   <TableSkeleton columns={['#', 'Đội đua', 'Thắng', 'Điểm']} />
                 ) : (
-                  <ConstructorsTable rows={state.constructors} />
+                  <ConstructorsTable rows={constructors} />
                 )
-              ) : loading || !state.drivers ? (
+              ) : loading || !drivers ? (
                 <TableSkeleton columns={['#', 'Tay đua', 'Đội', 'Thắng', 'Điểm']} />
               ) : (
-                <DriversTable rows={state.drivers} />
+                <DriversTable rows={drivers} />
               )}
             </motion.section>
           </AnimatePresence>
-        )}
+        }
       </div>
       </main>
     </div>

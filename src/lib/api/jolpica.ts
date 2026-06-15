@@ -73,6 +73,7 @@ function num(v: unknown): number {
  */
 export async function getDriverSeasonResults(
   driverId: string,
+  revalidate = false,
 ): Promise<{ data: DriverSeasonResult[]; stale: boolean }> {
   const jolpicaId = jolpicaDriverId[driverId];
   const fallback = fallbackDriverResults[driverId] ?? [];
@@ -107,11 +108,12 @@ export async function getDriverSeasonResults(
         };
       });
     },
+    { revalidate },
   );
 }
 
 /** Current 2026 constructor standings. TTL 10 min. */
-export async function getConstructorStandings(): Promise<{
+export async function getConstructorStandings(revalidate = false): Promise<{
   data: ConstructorStanding[];
   stale: boolean;
 }> {
@@ -136,11 +138,12 @@ export async function getConstructorStandings(): Promise<{
         };
       });
     },
+    { revalidate },
   );
 }
 
 /** Current 2026 driver standings. TTL 10 min. */
-export async function getDriverStandings(): Promise<{
+export async function getDriverStandings(revalidate = false): Promise<{
   data: DriverStanding[];
   stale: boolean;
 }> {
@@ -170,6 +173,7 @@ export async function getDriverStandings(): Promise<{
         };
       });
     },
+    { revalidate },
   );
 }
 

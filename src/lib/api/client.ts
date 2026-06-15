@@ -44,6 +44,10 @@ function writeLocalStorage(key: string, entry: CacheEntry): void {
  * for `ttlMs`. On any fetch/parse error returns, in order of preference:
  * last-known cached value (even expired) or `fallback` — always with
  * `stale: true`. Resolves in every case; never rejects.
+ *
+ * `opts.revalidate` (used by the live-polling hook) skips the fresh-cache
+ * short-circuit and always hits the network, so a poll genuinely refreshes;
+ * the cache is still consulted as a fallback if that network call fails.
  */
 export async function fetchWithCache<T>(
   key: string,
@@ -51,18 +55,21 @@ export async function fetchWithCache<T>(
   ttlMs: number,
   fallback: T,
   parse: (json: unknown) => T,
+  opts: { revalidate?: boolean } = {},
 ): Promise<{ data: T; stale: boolean }> {
   const now = Date.now();
 
   const mem = memCache.get(key);
-  if (mem && mem.expiresAt > now) {
-    return { data: mem.value as T, stale: false };
-  }
-
   const stored = readLocalStorage(key);
-  if (stored && stored.expiresAt > now) {
-    memCache.set(key, stored);
-    return { data: stored.value as T, stale: false };
+
+  if (!opts.revalidate) {
+    if (mem && mem.expiresAt > now) {
+      return { data: mem.value as T, stale: false };
+    }
+    if (stored && stored.expiresAt > now) {
+      memCache.set(key, stored);
+      return { data: stored.value as T, stale: false };
+    }
   }
 
   try {

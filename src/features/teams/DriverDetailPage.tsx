@@ -8,7 +8,7 @@
 // Motion wiring placed (not animated — Phase 4 owns timing/transition):
 //   layoutId="driver-portrait-{driverId}" → morph target from the team driver card
 //   data-motion="result-row" on every timeline row → Phase-4 cascade hook
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -17,20 +17,17 @@ import type { DriverSeasonResult } from '../../types';
 import Eyebrow from '../../components/Eyebrow';
 import Navbar from '../../components/Navbar';
 import Skeleton from '../../components/Skeleton';
-import StaleDataBadge from '../../components/StaleDataBadge';
-import ErrorFallback from '../../components/ErrorFallback';
+import LiveBadge from '../../components/LiveBadge';
 import { getTeam } from '../../data/teams';
 import { getDriver } from '../../data/drivers';
 import { getDriverSeasonResults } from '../../lib/api/jolpica';
-import { driverResultsSnapshot } from '../../data/fallbacks/driverResults';
+import { useLiveData } from '../../lib/useLiveData';
 import DriverPortrait from './DriverPortrait';
 import type { Variants } from 'framer-motion';
 import { DUR, EASE, RISE, SPRING, STAGGER, useReducedMotionSafe } from '../../lib/motion';
 
-type LoadState =
-  | { status: 'loading' }
-  | { status: 'error' }
-  | { status: 'ready'; data: DriverSeasonResult[]; stale: boolean };
+/** Auto-refresh cadence for live driver results (user-chosen 30s). */
+const REFRESH_MS = 30_000;
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
@@ -158,25 +155,21 @@ export default function DriverDetailPage() {
   // Validate the driver actually belongs to this team route.
   const valid = !!driver && !!teamId && driver.teamId === teamId;
 
-  const [state, setState] = useState<LoadState>({ status: 'loading' });
-
-  useEffect(() => {
-    if (!valid || !driverId) return;
-    let active = true;
-    setState({ status: 'loading' });
-    (async () => {
-      try {
-        // The fetcher never throws (built-in fallback) — try/catch is defense.
-        const { data, stale } = await getDriverSeasonResults(driverId);
-        if (active) setState({ status: 'ready', data, stale });
-      } catch {
-        if (active) setState({ status: 'error' });
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [valid, driverId]);
+  // Live driver results: polls every REFRESH_MS while visible. Invalid routes
+  // resolve to an empty set without a network call (the early return below renders
+  // the not-found state). On a fetch failure the api layer yields the cached
+  // fallback flagged stale — surfaced by the LiveBadge, no separate error screen.
+  const fetchResults = useCallback(
+    (revalidate: boolean) =>
+      valid && driverId
+        ? getDriverSeasonResults(driverId, revalidate)
+        : Promise.resolve({ data: [] as DriverSeasonResult[], stale: false }),
+    [valid, driverId],
+  );
+  const { data: results, stale, loading, lastUpdated, live } = useLiveData(
+    fetchResults,
+    REFRESH_MS,
+  );
 
   if (!valid || !driver) {
     return (
@@ -202,7 +195,7 @@ export default function DriverDetailPage() {
     );
   }
 
-  const totals = state.status === 'ready' ? computeTotals(state.data) : null;
+  const totals = results ? computeTotals(results) : null;
 
   return (
     <div className="min-h-screen bg-transparent">
@@ -244,7 +237,7 @@ export default function DriverDetailPage() {
           <Eyebrow id="totals-heading" className="mb-8">
             Mùa giải 2026
           </Eyebrow>
-          {state.status === 'loading' && (
+          {loading && (
             <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-16 w-24" />
@@ -265,17 +258,10 @@ export default function DriverDetailPage() {
         <section aria-labelledby="results-heading" className="mt-16">
           <div className="mb-8 flex flex-wrap items-center gap-4">
             <Eyebrow id="results-heading">Kết quả từng chặng</Eyebrow>
-            {state.status === 'ready' && state.stale && (
-              <span className="inline-flex items-center gap-2">
-                <StaleDataBadge />
-                <span className="text-xs text-neutral-600">
-                  Cập nhật {driverResultsSnapshot.fetchedAt}
-                </span>
-              </span>
-            )}
+            {!loading && <LiveBadge live={live} stale={stale} lastUpdated={lastUpdated} />}
           </div>
 
-          {state.status === 'loading' && (
+          {loading && (
             <div className="space-y-px" aria-hidden="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-14 w-full" />
@@ -283,34 +269,20 @@ export default function DriverDetailPage() {
             </div>
           )}
 
-          {state.status === 'error' && (
-            <ErrorFallback
-              message="Không tải được kết quả mùa giải của tay đua. Vui lòng thử lại."
-              onRetry={() => {
-                if (driverId) {
-                  setState({ status: 'loading' });
-                  getDriverSeasonResults(driverId)
-                    .then(({ data, stale }) => setState({ status: 'ready', data, stale }))
-                    .catch(() => setState({ status: 'error' }));
-                }
-              }}
-            />
-          )}
-
-          {state.status === 'ready' && state.data.length === 0 && (
+          {!loading && results && results.length === 0 && (
             <p className="text-sm leading-relaxed text-neutral-600">
               Mùa giải đang diễn ra — chưa có kết quả cho chặng nào.
             </p>
           )}
 
-          {state.status === 'ready' && state.data.length > 0 && (
+          {!loading && results && results.length > 0 && (
             <motion.ul
               className="border-t border-neutral-200"
               variants={reduced ? undefined : ROWS_CONTAINER}
               initial={reduced ? undefined : 'hidden'}
               animate={reduced ? undefined : 'show'}
             >
-              {[...state.data]
+              {[...results]
                 .sort((a, b) => a.round - b.round)
                 .map((result) => (
                   <motion.li
