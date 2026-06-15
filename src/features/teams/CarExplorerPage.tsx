@@ -61,12 +61,14 @@ export default function CarExplorerPage() {
     <main className="min-h-screen bg-transparent px-6 py-16 sm:px-8 md:px-16 md:py-20 lg:px-20 xl:px-28">
       {/* Header */}
       <header className="mb-10">
-        <Link
-          to={`/teams/${teamId}`}
-          className="inline-block text-sm text-neutral-600 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500"
-        >
-          ← Quay lại đội
-        </Link>
+        <div>
+          <Link
+            to={`/teams/${teamId}`}
+            className="inline-block text-sm text-neutral-600 hover:text-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500"
+          >
+            ← Quay lại đội
+          </Link>
+        </div>
         <Eyebrow className="mt-8">Cấu tạo xe 2026</Eyebrow>
         <h1 className="mt-3 text-4xl font-light leading-[1.05] tracking-tight text-neutral-900 md:text-6xl">
           {team.carModel}

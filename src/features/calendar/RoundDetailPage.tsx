@@ -8,7 +8,7 @@
 // in only after the route settles (sequenced via drawProgress, see MOTION-HOOK).
 // The poster is visible immediately and crossfades to the canvas on its FIRST
 // rendered frame — never a blank/black canvas.
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link, useParams } from 'react-router-dom';
 import Eyebrow from '../../components/Eyebrow';
@@ -38,6 +38,8 @@ export default function RoundDetailPage() {
   const race = Number.isInteger(round) ? getRace(round) : undefined;
 
   const [canvasReady, setCanvasReady] = useState(false);
+  // Reset canvas state when navigating to a different round (component reuses across params).
+  useEffect(() => { setCanvasReady(false); }, [round]);
 
   // Invalid / missing round → friendly not-found with a way back.
   if (!race) {
@@ -72,10 +74,12 @@ export default function RoundDetailPage() {
         ← Lịch thi đấu
       </Link>
 
-      {/* Header card — morph target of the calendar preview card (MOTION.md §2). */}
+      {/* Header card. The shared-element `layoutId` morph from the calendar preview
+          card (MOTION.md §2) is intentionally removed: paired across
+          <AnimatePresence mode="wait"> it deadlocks the calendar's exit (worse under
+          map zoom/pan), so this route never mounts and the page shows blank. The
+          parallax route transition covers the change with no hard cut. */}
       <motion.div
-        layoutId={`round-card-${round}`}
-        layout
         transition={{ ease: EASE.move, duration: DUR.slow }}
         className="mt-8"
       >
@@ -115,8 +119,6 @@ export default function RoundDetailPage() {
                 <Suspense fallback={null}>
                   <TrackScene
                     circuit={circuit}
-                    // MOTION-HOOK: Phase-4 f1-motion-designer sequences drawProgress
-                    // 0→1 after the route transition settles. Static 1 for now.
                     drawProgress={1}
                     accentColor={accent}
                     onFirstFrame={() => setCanvasReady(true)}

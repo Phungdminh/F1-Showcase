@@ -180,9 +180,9 @@ export default function TrackScene({
       frameloop="always"
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
     >
-      {/* onFirstFrame lives at the Canvas root so it fires regardless of the
-          ribbon's draw state (poster→canvas crossfade, MOTION §4). */}
-      <FirstFrameNotifier onFirstFrame={onFirstFrame} />
+      {/* key=circuit.id remounts the notifier on circuit change so firedRef resets
+          and onFirstFrame fires again — without destroying the WebGL context. */}
+      <FirstFrameNotifier key={circuit.id} onFirstFrame={onFirstFrame} />
       <AdaptiveDpr />
 
       <TrackContents

@@ -4,6 +4,7 @@
 // coordinate space yet is a real focusable control. Upcoming = bright red pin
 // (gentle pulse); past = dimmed red pin. Selection/behavior come in via props.
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import type { Race } from '../../types';
 import { project } from './WorldMap';
 import { useReducedMotionSafe } from '../../lib/motion';
@@ -36,16 +37,20 @@ export interface RoundMarkerProps {
   onSelect: (round: number) => void;
   /** Pointer left / focus lost — the page debounces this into hiding the card. */
   onHoverEnd: () => void;
+  /** Current map zoom scale — pin divides by this to stay constant screen size. */
+  scale?: number;
 }
 
-export default function RoundMarker({ race, upcoming, active, onSelect, onHoverEnd }: RoundMarkerProps) {
+export default function RoundMarker({ race, upcoming, active, onSelect, onHoverEnd, scale = 1 }: RoundMarkerProps) {
   const reduced = useReducedMotionSafe();
+  const navigate = useNavigate();
   const { x, y } = project(race.lat, race.lng);
   const label = `Vòng ${race.round} — ${race.name}, ${VI_DATE.format(new Date(race.date))}${
     upcoming ? ' (sắp diễn ra)' : ' (đã đua)'
   }`;
-  // Pin box; the tip sits at its bottom-center, anchored exactly on (x, y).
-  const S = 24;
+  // Pin size in SVG units divided by scale so the pin stays the same screen size
+  // regardless of how far the user has zoomed in.
+  const S = 24 / scale;
 
   const pulsing = !reduced && upcoming && !active;
 
@@ -53,7 +58,7 @@ export default function RoundMarker({ race, upcoming, active, onSelect, onHoverE
     <foreignObject x={x - S / 2} y={y - S} width={S} height={S} overflow="visible">
       <button
         type="button"
-        onClick={() => onSelect(race.round)}
+        onClick={() => navigate(`/calendar/${race.round}`)}
         onMouseEnter={() => onSelect(race.round)}
         onMouseLeave={onHoverEnd}
         onFocus={() => onSelect(race.round)}

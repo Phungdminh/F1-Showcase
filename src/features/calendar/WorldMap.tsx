@@ -40,9 +40,13 @@ export interface WorldMapProps {
    * the map set piece below. Optional + additive — omit for a static map.
    */
   routePoints?: ReadonlyArray<{ x: number; y: number }>;
+  /** Controlled viewBox string for external zoom/pan. Falls back to default crop. */
+  viewBox?: string;
+  /** Current map zoom scale — used to keep stroke widths constant on screen. */
+  scale?: number;
 }
 
-export default function WorldMap({ children, routePoints }: WorldMapProps) {
+export default function WorldMap({ children, routePoints, viewBox: viewBoxProp, scale = 1 }: WorldMapProps) {
   const reduced = useReducedMotionSafe();
   const d = routePoints ? routeD(routePoints) : '';
 
@@ -50,7 +54,7 @@ export default function WorldMap({ children, routePoints }: WorldMapProps) {
   // itself in (sequence via delay, never overlap). Reduced motion → instant.
   return (
     <svg
-      viewBox={VIEWBOX}
+      viewBox={viewBoxProp ?? VIEWBOX}
       className="h-auto w-full"
       role="img"
       aria-label="Bản đồ thế giới với 24 chặng đua mùa giải 2026"
@@ -62,17 +66,14 @@ export default function WorldMap({ children, routePoints }: WorldMapProps) {
           <stop offset="100%" stopColor="#15171c" />
         </linearGradient>
         <linearGradient id="wm-route" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#6b7280" stopOpacity="0.25" />
-          <stop offset="50%" stopColor="#cfd3da" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#6b7280" stopOpacity="0.25" />
+          <stop offset="0%" stopColor="#9ca3af" stopOpacity="0.55" />
+          <stop offset="50%" stopColor="#e5e7eb" stopOpacity="1" />
+          <stop offset="100%" stopColor="#9ca3af" stopOpacity="0.55" />
         </linearGradient>
         <radialGradient id="wm-glow" cx="52%" cy="46%" r="60%">
           <stop offset="0%" stopColor="#3a4150" stopOpacity="0.28" />
           <stop offset="100%" stopColor="#3a4150" stopOpacity="0" />
         </radialGradient>
-        <filter id="wm-soft" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.1" />
-        </filter>
         {/* Fade the land into the page at the crop edges (no hard coastlines). */}
         <linearGradient id="wm-fade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#fff" stopOpacity="0" />
@@ -90,7 +91,7 @@ export default function WorldMap({ children, routePoints }: WorldMapProps) {
 
       <g mask="url(#wm-edge)">
         {/* Graticule grid — very faint. */}
-        <g stroke="#5b6472" strokeWidth={0.5} opacity={0.1}>
+        <g stroke="#5b6472" strokeWidth={0.5 / scale} opacity={0.1}>
           {GRID_LNG.map((lng) => {
             const x = project(0, lng).x;
             return <line key={`v${lng}`} x1={x} y1={VIEW.y} x2={x} y2={VIEW.y + VIEW.h} />;
@@ -105,7 +106,7 @@ export default function WorldMap({ children, routePoints }: WorldMapProps) {
         <motion.g
           fill="url(#wm-land)"
           stroke="#3d424b"
-          strokeWidth={0.6}
+          strokeWidth={0.6 / scale}
           strokeOpacity={0.8}
           strokeLinejoin="round"
           fillRule="evenodd"
@@ -124,10 +125,9 @@ export default function WorldMap({ children, routePoints }: WorldMapProps) {
           d={d}
           fill="none"
           stroke="url(#wm-route)"
-          strokeWidth={1.2}
+          strokeWidth={2 / scale}
           strokeLinejoin="round"
           strokeLinecap="round"
-          filter="url(#wm-soft)"
           aria-hidden="true"
           initial={reduced ? false : { pathLength: 0, opacity: 0 }}
           animate={reduced ? undefined : { pathLength: 1, opacity: 1 }}

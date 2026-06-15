@@ -4,8 +4,7 @@
 // stable structure/classNames here; we do NOT author entrance animations (Phase-4 owns
 // the SPRING + draw-in sequencing). data-motion="round-card" tags it for the motion pass.
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowRight, Check, MapPin } from 'lucide-react';
+import { Check, MapPin } from 'lucide-react';
 import type { Race } from '../../types';
 import { getCircuit } from '../../data/circuits';
 import Eyebrow from '../../components/Eyebrow';
@@ -46,9 +45,16 @@ export default function RoundPreviewCard({ race, upcoming, now, className = '' }
   // an INNER wrapper, so it never fights the layoutId root's `layout` morph (Lane
   // A owns that). Reduced motion → no pop (static content). MOTION §3 / §6.
   return (
+    // NOTE: no `layoutId`/`layout` here. This card and the /calendar/:roundId
+    // header once shared a `layoutId` morph (MOTION §2), but a shared-element node
+    // sitting in the calendar tree that <AnimatePresence mode="wait"> animates OUT
+    // can deadlock the exit-complete callback — the detail route never mounts, so
+    // the URL changes while the page stays blank/stuck. It is especially fragile
+    // under map zoom/pan, where this card's source rect goes degenerate
+    // (display:none / off-screen). The parallax route transition still covers the
+    // change with no hard cut. Re-introduce a morph only with a presence mode that
+    // keeps BOTH nodes mounted (e.g. popLayout), never mode="wait".
     <motion.div
-      layoutId={`round-card-${race.round}`}
-      layout
       transition={{ ease: EASE.move, duration: DUR.slow }}
       data-motion="round-card"
       className={`w-72 max-w-full rounded-2xl border p-6 shadow-lg ${
@@ -94,13 +100,6 @@ export default function RoundPreviewCard({ race, upcoming, now, className = '' }
         {VI_DATE.format(new Date(race.date))}
       </p>
 
-      <Link
-        to={`/calendar/${race.round}`}
-        className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-neutral-900 underline decoration-neutral-400 underline-offset-4 hover:decoration-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400"
-      >
-        Xem đường đua
-        <ArrowRight aria-hidden="true" className="h-4 w-4" />
-      </Link>
       </motion.div>
     </motion.div>
   );
