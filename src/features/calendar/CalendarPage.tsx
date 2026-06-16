@@ -10,6 +10,7 @@
 // map draw-in set piece (MOTION §3 /calendar → /calendar/:roundId).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 
 // ── Zoom/pan helpers ──────────────────────────────────────────────────────────
@@ -44,6 +45,105 @@ import RoundPreviewCard from './RoundPreviewCard';
 /** A race is "upcoming" when its date is today (runtime) or later. */
 function isUpcoming(race: Race, now: Date): boolean {
   return new Date(race.date).getTime() >= now.getTime();
+}
+
+const VI_TODAY = new Intl.DateTimeFormat('vi-VN', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const VI_DAY_MONTH = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit' });
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** Whole days from `now` (local midnight) until the race; null if today or past. */
+function daysUntil(dateIso: string, now: Date): number | null {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const target = new Date(dateIso);
+  target.setHours(0, 0, 0, 0);
+  const diff = Math.round((target.getTime() - start.getTime()) / MS_PER_DAY);
+  return diff > 0 ? diff : null;
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+/**
+ * "Hôm nay + chặng kế tiếp" panel. Rendered twice from CalendarPage: a dark glass
+ * overlay pinned to the map's bottom-left on md+ (`theme="dark"`), and a light card
+ * below the map on phones (`theme="light"`, where an overlay would bury the short
+ * full-bleed map). Each upcoming round links to its detail page.
+ */
+function UpcomingPanel({
+  now,
+  races,
+  theme,
+  className = '',
+}: {
+  now: Date;
+  races: Race[];
+  theme: 'dark' | 'light';
+  className?: string;
+}) {
+  const dark = theme === 'dark';
+  const nextDays = races.length > 0 ? daysUntil(races[0].date, now) : null;
+  const shell = dark
+    ? 'w-44 rounded-lg bg-black/45 p-3 ring-1 ring-white/10 backdrop-blur-md'
+    : 'rounded-xl border border-neutral-200 bg-white p-4';
+  const label = dark ? 'text-white/40' : 'text-neutral-400';
+  const todayText = dark ? 'text-white/90' : 'text-neutral-900';
+  const meta = dark ? 'text-white/40' : 'text-neutral-400';
+  const name = dark
+    ? 'text-white/80 group-hover:text-white'
+    : 'text-neutral-700 group-hover:text-neutral-900';
+  const divide = dark ? 'border-white/10' : 'border-neutral-200';
+  const focus = dark ? 'focus-visible:outline-white/50' : 'focus-visible:outline-neutral-400';
+
+  return (
+    // Stop pointer-down from bubbling to the map's drag handler so taps on the
+    // panel never start a pan.
+    <div className={`${shell} ${className}`.trim()} onPointerDown={(e) => e.stopPropagation()}>
+      <p className={`text-[10px] font-medium uppercase tracking-[0.18em] ${label}`}>Hôm nay</p>
+      <p className={`mt-0.5 text-sm font-medium ${todayText}`}>{VI_TODAY.format(now)}</p>
+
+      <div className={`mt-3 border-t pt-2.5 ${divide}`}>
+        <p
+          className={`flex items-baseline justify-between text-[10px] font-medium uppercase tracking-[0.18em] ${label}`}
+        >
+          <span>Chặng kế tiếp</span>
+          {nextDays !== null && (
+            <span className="normal-case tracking-normal">còn {nextDays} ngày</span>
+          )}
+        </p>
+
+        {races.length === 0 ? (
+          <p className={`mt-1.5 text-xs ${meta}`}>Mùa giải đã kết thúc</p>
+        ) : (
+          <ul className="mt-1.5 space-y-1.5">
+            {races.map((race) => (
+              <li key={race.round}>
+                <Link
+                  to={`/calendar/${race.round}`}
+                  className={`group flex items-center gap-2 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${focus}`}
+                >
+                  <span className={`w-7 shrink-0 font-mono text-[10px] tabular-nums ${meta}`}>
+                    R{pad2(race.round)}
+                  </span>
+                  <span className={`flex-1 truncate text-xs transition-colors ${name}`}>
+                    {race.name}
+                  </span>
+                  <span className={`shrink-0 text-[10px] tabular-nums ${meta}`}>
+                    {VI_DAY_MONTH.format(new Date(race.date))}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -243,6 +343,12 @@ export default function CalendarPage() {
     [rounds],
   );
 
+  // Next few upcoming rounds for the "today + chặng kế tiếp" panel.
+  const nextRaces = useMemo(
+    () => rounds.filter((r) => isUpcoming(r, now)).slice(0, 3),
+    [rounds, now],
+  );
+
   const empty = rounds.length === 0;
 
   return (
@@ -309,6 +415,15 @@ export default function CalendarPage() {
                 </div>
               )}
 
+              {/* Today + next rounds — glass sidebar pinned to the map's bottom-left
+                  (desktop/tablet; a phone shows the light card below the map instead). */}
+              <UpcomingPanel
+                now={now}
+                races={nextRaces}
+                theme="dark"
+                className="absolute bottom-3 left-3 z-10 hidden md:block"
+              />
+
               {/* Zoom controls */}
               <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 md:bottom-3 md:right-3">
                 {currentScale > 1.05 && (
@@ -353,6 +468,10 @@ export default function CalendarPage() {
           <p className="mt-3 px-1 text-center text-xs leading-relaxed text-neutral-500 md:hidden">
             Chụm 2 ngón để phóng to · chạm vào marker để xem đường đua
           </p>
+
+          {/* Phones: the today + next-rounds panel lives below the (short, full-bleed)
+              map rather than overlaying it. */}
+          <UpcomingPanel now={now} races={nextRaces} theme="light" className="mt-6 md:hidden" />
 
           {/* Mobile / tablet: preview panel below the map (robust, no overlap). */}
           {selectedRace && (
